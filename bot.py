@@ -135,7 +135,7 @@ class ShadeBot:
                      proxy_str = f"http://{proxy_str}"
         return {"http": proxy_str, "https": proxy_str}
 
-    def get_signature_data(self, private_key, format_version=3):
+    def get_signature_data(self, private_key):
         try:
             w3 = Web3()
             
@@ -166,7 +166,7 @@ class ShadeBot:
 
     def do_login(self, private_key, proxies):
         try:
-            address, timestamp, signature, message = self.get_signature_data(private_key, 3)
+            address, timestamp, signature, message = self.get_signature_data(private_key)
             
             payload = {
                 "address": address,
@@ -202,31 +202,6 @@ class ShadeBot:
         
         return None, None
 
-    def get_quests(self, token, proxies):
-        """Fetch all available quests"""
-        headers = self.get_headers("points", auth_token=token)
-        try:
-            response = requests.get(
-                "https://points.shadenetwork.io/api/quests",
-                headers=headers,
-                proxies=proxies,
-                timeout=30
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                quests = data.get('quests', [])
-                stats = data.get('stats', {})
-                
-                self.log(f"Quest Stats - Total: {stats.get('total', 0)} | Completed: {stats.get('completed', 0)} | Available: {stats.get('available', 0)}", "INFO")
-                
-                return quests
-            else:
-                return []
-                
-        except Exception as e:
-            return []
-
     def do_claim(self, token, proxies):
         headers = self.get_headers("points", auth_token=token)
         try:
@@ -257,126 +232,89 @@ class ShadeBot:
                     time_str = self.get_wib_time()
                     print(f"[{time_str}] {Fore.GREEN}[SUCCESS] Total Points: {new_points:,}{Style.RESET_ALL}")
                 else:
-                    self.log(f"Claim failed", "WARNING")
+                    self.log(f"Not claimed yet", "WARNING")
             elif response.status_code == 400:
                 self.log("Already claimed", "WARNING")
             elif response.status_code == 429:
-                self.log("Rate limited", "WARNING")
+                self.log("Already claimed", "WARNING")
             else:
-                self.log(f"Claim error", "WARNING")
+                self.log(f"Not claimed yet", "WARNING")
                 
         except Exception as e:
             self.log(f"Claim error", "ERROR")
 
-    def do_quest(self, token, proxies, quest_id, quest_type, quest_title, quest_reward):
+    def verify_twitter(self, token, proxies):
         headers = self.get_headers("points", auth_token=token)
-        url = f"https://points.shadenetwork.io/api/quests/verify-{quest_type}"
+        headers["referer"] = "https://points.shadenetwork.io/quests"
         
-        try:
-            response = requests.post(
-                url, 
-                headers=headers, 
-                json={"questId": quest_id}, 
-                proxies=proxies, 
-                timeout=30
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                if data.get("verified"):
-                    time_str = self.get_wib_time()
-                    print(f"[{time_str}] {Fore.GREEN}[SUCCESS] Quest '{quest_title}' Completed! Reward: +{quest_reward} Points{Style.RESET_ALL}")
-                else:
-                    self.log(f"Quest '{quest_title}' - Not verified", "WARNING")
-            elif response.status_code == 400:
-                error_data = response.json()
-                error_msg = error_data.get('error', 'Quest error')
-                if 'already completed' in error_msg.lower():
-                    self.log(f"Quest '{quest_title}' - Already done", "WARNING")
-                else:
-                    self.log(f"Quest '{quest_title}' - Failed", "WARNING")
-            elif response.status_code == 404:
-                self.log(f"Quest '{quest_title}' - Not available", "WARNING")
-            else:
-                self.log(f"Quest '{quest_title}' - Error", "WARNING")
-                
-        except Exception as e:
-            self.log(f"Quest '{quest_title}' - Error", "WARNING")
-
-    def auto_complete_quests(self, token, proxies):
-        """Auto complete all available quests"""
-        quests = self.get_quests(token, proxies)
-        
-        if not quests:
-            return
-        
-        available_quests = [
-            q for q in quests 
-            if q.get('canComplete') 
-            and q.get('status') == 'available'
-            and q.get('platform') != 'blockchain'
+        twitter_quests = [
+            {"questId": "social_001", "title": "Follow Twitter"},
+            {"questId": "social_002", "title": "Like Tweet"},
+            {"questId": "social_003", "title": "Retweet"},
         ]
         
-        if not available_quests:
-            self.log("No available quests to complete at this time", "INFO")
-            return
-        
-        self.log(f"Processing {len(available_quests)} Available Quest(s):", "INFO")
-        
-        for quest in available_quests:
-            quest_id = quest.get('externalId')
-            title = quest.get('title')
-            platform = quest.get('platform', 'unknown')
-            reward = quest.get('reward', 0)
+        try:
+            self.log("Processing Twitter Verifications:", "INFO")
             
-            if platform == 'twitter':
-                quest_type = 'twitter'
-            elif platform == 'discord':
-                quest_type = 'discord'
-            elif platform == 'telegram':
-                quest_type = 'telegram'
-            else:
-                quest_type = platform
-            
-            self.random_delay()
-            self.do_quest(token, proxies, quest_id, quest_type, title, reward)
+            for quest in twitter_quests:
+                self.random_delay()
+                
+                response = requests.post(
+                    "https://points.shadenetwork.io/api/quests/verify-twitter",
+                    headers=headers,
+                    json={"questId": quest["questId"]},
+                    proxies=proxies,
+                    timeout=30
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get("verified"):
+                        time_str = self.get_wib_time()
+                        print(f"[{time_str}] {Fore.GREEN}[SUCCESS] Twitter Quest '{quest['title']}' Verified!{Style.RESET_ALL}")
+                elif response.status_code == 400:
+                    pass
+                else:
+                    pass
+                    
+        except Exception as e:
+            pass
 
-    def check_activities(self, address, login_token, proxies):
-        url = "https://wallet.shadenetwork.io/api/activities"
-        headers = self.get_headers("wallet")
-        payload = {
-            "address": address,
-            "limit": 20,
-            "offset": 0,
-            "token": login_token
-        }
+    def verify_discord(self, token, proxies):
+        headers = self.get_headers("points", auth_token=token)
+        headers["referer"] = "https://points.shadenetwork.io/quests"
+        
+        discord_quests = [
+            {"questId": "social_006", "title": "Join Discord"},
+            {"questId": "social_007", "title": "Send Message"},
+        ]
         
         try:
-            self.log("Checking Activities:", "INFO")
+            self.log("Processing Discord Verifications:", "INFO")
             
-            self.random_delay()
-            
-            response = requests.post(
-                url, 
-                headers=headers, 
-                json=payload, 
-                proxies=proxies, 
-                timeout=60
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                total = data.get("total", 0)
+            for quest in discord_quests:
+                self.random_delay()
                 
-                time_str = self.get_wib_time()
-                print(f"[{time_str}] {Fore.GREEN}[SUCCESS] Activity Check OK | Total: {total}{Style.RESET_ALL}")
-            else:
-                self.log(f"Activity check failed", "WARNING")
+                response = requests.post(
+                    "https://points.shadenetwork.io/api/quests/verify-discord",
+                    headers=headers,
+                    json={"questId": quest["questId"]},
+                    proxies=proxies,
+                    timeout=30
+                )
                 
-        except requests.exceptions.Timeout:
-            self.log("Activity check timeout", "WARNING")
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get("verified"):
+                        time_str = self.get_wib_time()
+                        print(f"[{time_str}] {Fore.GREEN}[SUCCESS] Discord Quest '{quest['title']}' Verified!{Style.RESET_ALL}")
+                elif response.status_code == 400:
+                    pass
+                else:
+                    pass
+                    
         except Exception as e:
-            self.log(f"Activity error", "ERROR")
+            pass
 
     def do_faucet(self, address, proxies):
         url = "https://wallet.shadenetwork.io/api/faucet"
@@ -410,18 +348,23 @@ class ShadeBot:
                     time_str = self.get_wib_time()
                     print(f"[{time_str}] {Fore.GREEN}[SUCCESS] TxHash: {tx_hash[:10]}...{tx_hash[-8:]}{Style.RESET_ALL}")
                 else:
-                    self.log(f"Faucet Failed", "WARNING")
+                    self.log("Not claimed yet", "WARNING")
             elif response.status_code == 429:
                 error_data = response.json() if response.text else {}
-                error_msg = error_data.get('error', 'Rate limited')
-                self.log(f"Faucet: {error_msg}", "WARNING")
+                error_msg = error_data.get('error', '')
+                if error_msg:
+                    self.log(f"Faucet: {error_msg}", "WARNING")
+                else:
+                    self.log("Already claimed", "WARNING")
+            elif response.status_code == 404:
+                self.log("Already claimed", "WARNING")
             else:
-                self.log(f"Faucet Error: {response.status_code}", "ERROR")
+                self.log(f"Not claimed yet", "WARNING")
         
         except requests.exceptions.Timeout:
-            self.log("Faucet Claim: Timeout (skipping...)", "WARNING")
+            self.log("Faucet timeout", "WARNING")
         except Exception as e:
-            self.log(f"Faucet Error: {str(e)}", "ERROR")
+            self.log(f"Faucet error: {str(e)}", "WARNING")
 
     def run(self):
         self.print_banner()
@@ -476,9 +419,9 @@ class ShadeBot:
                     
                     self.do_claim(token, current_proxy)
                     
-                    self.auto_complete_quests(token, current_proxy)
-
-                    self.check_activities(address, token, current_proxy)
+                    self.verify_twitter(token, current_proxy)
+                    
+                    self.verify_discord(token, current_proxy)
 
                     self.do_faucet(address, current_proxy)
                 else:
