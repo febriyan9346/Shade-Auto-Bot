@@ -366,6 +366,47 @@ class ShadeBot:
         except Exception as e:
             self.log(f"Faucet error: {str(e)}", "WARNING")
 
+    def check_leaderboard(self, token, proxies):
+        headers = self.get_headers("points", auth_token=token)
+        headers["referer"] = "https://points.shadenetwork.io/leaderboard"
+        
+        try:
+            self.log("Checking Leaderboard:", "INFO")
+            
+            self.random_delay()
+            
+            response = requests.get(
+                "https://points.shadenetwork.io/api/leaderboard?type=overall&page=1&limit=50",
+                headers=headers,
+                proxies=proxies,
+                timeout=30
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                current_user = data.get("currentUser", {})
+                
+                if current_user:
+                    rank = current_user.get("rank", "N/A")
+                    nickname = current_user.get("nickname", "Unknown")
+                    points = current_user.get("points", 0)
+                    level = current_user.get("level", 0)
+                    
+                    time_str = self.get_wib_time()
+                    print(f"[{time_str}] {Fore.GREEN}[SUCCESS] Leaderboard Info:{Style.RESET_ALL}")
+                    
+                    self.random_delay()
+                    
+                    time_str = self.get_wib_time()
+                    print(f"[{time_str}] {Fore.GREEN}[SUCCESS] Nickname: {nickname} | Rank: #{rank} | Points: {points:,} | Level: {level}{Style.RESET_ALL}")
+                else:
+                    self.log("User data not found", "WARNING")
+            else:
+                self.log(f"Leaderboard check failed", "WARNING")
+                
+        except Exception as e:
+            self.log(f"Leaderboard error", "ERROR")
+
     def run(self):
         self.print_banner()
         
@@ -424,6 +465,8 @@ class ShadeBot:
                     self.verify_discord(token, current_proxy)
 
                     self.do_faucet(address, current_proxy)
+                    
+                    self.check_leaderboard(token, current_proxy)
                 else:
                     self.log(f"Skipping account #{i+1} due to login failure", "WARNING")
 
