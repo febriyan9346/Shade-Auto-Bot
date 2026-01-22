@@ -448,8 +448,30 @@ class ShadeBot:
                 if response.status_code == 200:
                     data = response.json()
                     if data.get("verified"):
+                        verification_proof = data.get("proof", "")
                         time_str = self.get_wib_time()
                         print(f"[{time_str}] {Fore.GREEN}[SUCCESS] Twitter Quest '{quest['title']}' Verified!{Style.RESET_ALL}")
+                        
+                        self.random_delay()
+                        
+                        complete_response = requests.post(
+                            "https://points.shadenetwork.io/api/quests/complete",
+                            headers=headers,
+                            json={
+                                "questId": quest["questId"],
+                                "verificationProof": verification_proof
+                            },
+                            proxies=proxies,
+                            timeout=30
+                        )
+                        
+                        if complete_response.status_code == 200:
+                            complete_data = complete_response.json()
+                            if complete_data.get("success"):
+                                points_awarded = complete_data.get("pointsAwarded", 0)
+                                new_points = complete_data.get("newPoints", 0)
+                                time_str = self.get_wib_time()
+                                print(f"[{time_str}] {Fore.GREEN}[SUCCESS] Quest Completed! Points: +{points_awarded} | Total: {new_points:,}{Style.RESET_ALL}")
                 elif response.status_code == 400:
                     pass
                 else:
@@ -484,8 +506,30 @@ class ShadeBot:
                 if response.status_code == 200:
                     data = response.json()
                     if data.get("verified"):
+                        verification_proof = data.get("proof", "")
                         time_str = self.get_wib_time()
                         print(f"[{time_str}] {Fore.GREEN}[SUCCESS] Discord Quest '{quest['title']}' Verified!{Style.RESET_ALL}")
+                        
+                        self.random_delay()
+                        
+                        complete_response = requests.post(
+                            "https://points.shadenetwork.io/api/quests/complete",
+                            headers=headers,
+                            json={
+                                "questId": quest["questId"],
+                                "verificationProof": verification_proof
+                            },
+                            proxies=proxies,
+                            timeout=30
+                        )
+                        
+                        if complete_response.status_code == 200:
+                            complete_data = complete_response.json()
+                            if complete_data.get("success"):
+                                points_awarded = complete_data.get("pointsAwarded", 0)
+                                new_points = complete_data.get("newPoints", 0)
+                                time_str = self.get_wib_time()
+                                print(f"[{time_str}] {Fore.GREEN}[SUCCESS] Quest Completed! Points: +{points_awarded} | Total: {new_points:,}{Style.RESET_ALL}")
                 elif response.status_code == 400:
                     pass
                 else:
