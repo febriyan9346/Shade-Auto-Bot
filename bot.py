@@ -2,9 +2,7 @@ import os
 import time
 import random
 import requests
-import json
 from datetime import datetime
-from urllib.parse import urlencode
 import pytz
 from colorama import Fore, Style, init
 from web3 import Web3
@@ -20,179 +18,28 @@ if not sys.warnoptions:
 
 init(autoreset=True)
 
-class CaptchaSolver:
-    def __init__(self, bot_instance):
-        self.bot = bot_instance
-        self.page_url = "https://wallet.shadenetwork.io"
-        self.site_key = "0x4AAAAAACN1moBrJQ-mAzdh"
-    
-    def read_api_key(self, filename):
-        try:
-            with open(filename, "r") as f:
-                return f.read().strip()
-        except FileNotFoundError:
-            self.bot.log(f"File {filename} not found", "WARNING")
-            return None
-    
-    def solve_2captcha(self):
-        api_key = self.read_api_key("2captcha.txt")
-        if not api_key:
-            return None
-        
-        url_create = "https://api.2captcha.com/createTask"
-        payload = {
-            "clientKey": api_key,
-            "task": {
-                "type": "TurnstileTaskProxyless",
-                "websiteURL": self.page_url,
-                "websiteKey": self.site_key
-            }
-        }
-        
-        try:
-            self.bot.log("Requesting captcha solve from 2Captcha...", "INFO")
-            response = requests.post(url_create, json=payload, timeout=30)
-            result = response.json()
-        except Exception as e:
-            self.bot.log(f"2Captcha request error: {str(e)}", "ERROR")
-            return None
-        
-        if result.get("errorId") != 0:
-            self.bot.log(f"2Captcha error: {result.get('errorDescription')}", "ERROR")
-            return None
-        
-        task_id = result.get("taskId")
-        self.bot.log(f"2Captcha Task ID: {task_id}", "INFO")
-        
-        url_result = "https://api.2captcha.com/getTaskResult"
-        start_time = time.time()
-        
-        while time.time() - start_time < 300:
-            time.sleep(5)
-            
-            try:
-                check_response = requests.post(
-                    url_result, 
-                    json={"clientKey": api_key, "taskId": task_id}, 
-                    timeout=30
-                )
-                check_json = check_response.json()
-            except:
-                continue
-            
-            status = check_json.get("status")
-            
-            if status == "ready":
-                token = check_json.get("solution", {}).get("token")
-                self.bot.log("Captcha solved successfully!", "SUCCESS")
-                return token
-            elif status == "processing":
-                continue
-            else:
-                self.bot.log(f"2Captcha unexpected status: {check_json}", "ERROR")
-                break
-        
-        self.bot.log("2Captcha timeout", "ERROR")
-        return None
-    
-    def solve_sctg(self):
-        api_key = self.read_api_key("sctg.txt")
-        if not api_key:
-            return None
-        
-        params = {
-            "key": api_key,
-            "method": "turnstile",
-            "pageurl": self.page_url,
-            "sitekey": self.site_key
-        }
-        
-        url_in = "https://sctg.xyz/in.php?" + urlencode(params)
-        
-        try:
-            self.bot.log("Requesting captcha solve from SCTG...", "INFO")
-            response = requests.get(url_in, timeout=30)
-            resp_text = response.text.strip()
-        except Exception as e:
-            self.bot.log(f"SCTG request error: {str(e)}", "ERROR")
-            return None
-        
-        if "|" not in resp_text or "OK" not in resp_text:
-            self.bot.log(f"SCTG error: {resp_text}", "ERROR")
-            return None
-        
-        _, task_id = resp_text.split("|", 1)
-        self.bot.log(f"SCTG Task ID: {task_id}", "INFO")
-        
-        start_time = time.time()
-        while time.time() - start_time < 300:
-            time.sleep(5)
-            
-            poll_params = {
-                "key": api_key,
-                "id": task_id,
-                "action": "get"
-            }
-            url_res = "https://sctg.xyz/res.php?" + urlencode(poll_params)
-            
-            try:
-                poll_resp = requests.get(url_res, timeout=30)
-                poll_text = poll_resp.text.strip()
-            except:
-                continue
-            
-            if "OK|" in poll_text:
-                token = poll_text.split("|", 1)[1]
-                self.bot.log("Captcha solved successfully!", "SUCCESS")
-                return token
-            elif "CAPCHA_NOT_READY" in poll_text:
-                continue
-            elif "ERROR" in poll_text:
-                self.bot.log(f"SCTG error: {poll_text}", "ERROR")
-                break
-        
-        self.bot.log("SCTG timeout", "ERROR")
-        return None
-    
-    def solve(self, method="auto"):
-        if method == "2captcha":
-            return self.solve_2captcha()
-        elif method == "sctg":
-            return self.solve_sctg()
-        elif method == "auto":
-            token = self.solve_2captcha()
-            if not token:
-                self.bot.log("Trying SCTG as fallback...", "INFO")
-                token = self.solve_sctg()
-            return token
-        return None
-
-
 class ShadeBot:
     def __init__(self):
         self.base_headers = {
             "accept": "*/*",
-            "accept-encoding": "gzip, deflate, br, zstd",
+            "accept-encoding": "gzip, deflate",
             "accept-language": "en-US,en;q=0.9",
             "content-type": "application/json",
-            "sec-ch-ua": '"Google Chrome";v="143", "Chromium";v="143", "Not A(Brand";v="24"',
+            "sec-ch-ua": '"Not:A-Brand";v="99", "Google Chrome";v="145", "Chromium";v="145"',
             "sec-ch-ua-mobile": "?0",
             "sec-ch-ua-platform": '"Windows"',
             "sec-fetch-dest": "empty",
             "sec-fetch-mode": "cors",
             "sec-fetch-site": "same-origin",
-            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36"
+            "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/145.0.0.0 Safari/537.36"
         }
-        self.captcha_solver = CaptchaSolver(self)
-        self.captcha_method = "auto"
 
-    def get_headers(self, subdomain="points", auth_token=None):
+    def get_headers(self, subdomain="v1", auth_token=None):
         headers = self.base_headers.copy()
-        headers["authority"] = f"{subdomain}.shadenetwork.io"
         headers["origin"] = f"https://{subdomain}.shadenetwork.io"
-        headers["referer"] = f"https://{subdomain}.shadenetwork.io/"
+        headers["referer"] = f"https://{subdomain}.shadenetwork.io/dashboard"
         
-        if auth_token and subdomain == "points":
+        if auth_token and subdomain == "v1":
             headers["authorization"] = f"Bearer {auth_token}"
             
         return headers
@@ -252,31 +99,6 @@ class ShadeBot:
                     break
                 else:
                     print(f"{Fore.RED}Invalid choice! Please enter 1 or 2.{Style.RESET_ALL}")
-            except KeyboardInterrupt:
-                print(f"\n{Fore.RED}Program terminated by user.{Style.RESET_ALL}")
-                exit(0)
-        
-        print(f"\n{Fore.CYAN}============================================================{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}Select Captcha Solver:{Style.RESET_ALL}")
-        print(f"{Fore.GREEN}1. Auto (Try 2Captcha first, then SCTG)")
-        print(f"2. 2Captcha only")
-        print(f"3. SCTG only{Style.RESET_ALL}")
-        print(f"{Fore.CYAN}============================================================{Style.RESET_ALL}")
-        
-        while True:
-            try:
-                captcha_choice = input(f"{Fore.GREEN}Enter your choice (1/2/3): {Style.RESET_ALL}").strip()
-                if captcha_choice == '1':
-                    self.captcha_method = "auto"
-                    break
-                elif captcha_choice == '2':
-                    self.captcha_method = "2captcha"
-                    break
-                elif captcha_choice == '3':
-                    self.captcha_method = "sctg"
-                    break
-                else:
-                    print(f"{Fore.RED}Invalid choice! Please enter 1, 2, or 3.{Style.RESET_ALL}")
             except KeyboardInterrupt:
                 print(f"\n{Fore.RED}Program terminated by user.{Style.RESET_ALL}")
                 exit(0)
@@ -354,10 +176,10 @@ class ShadeBot:
             
             self.log(f"{address[:6]}...{address[-4:]}", "INFO")
             
-            headers = self.get_headers("points")
+            headers = self.get_headers("v1")
             
             response = requests.post(
-                "https://points.shadenetwork.io/api/auth/session",
+                "https://v1.shadenetwork.io/api/auth/session",
                 headers=headers,
                 json=payload,
                 proxies=proxies,
@@ -365,30 +187,33 @@ class ShadeBot:
             )
             
             if response.status_code in [200, 201]:
-                data = response.json()
-                if "token" in data:
-                    time_str = self.get_wib_time()
-                    print(f"[{time_str}] {Fore.GREEN}[SUCCESS] Login successful!{Style.RESET_ALL}")
-                    return data['token'], address
-                else:
-                    self.log(f"Token not in response", "WARNING")
+                try:
+                    data = response.json()
+                    if "token" in data:
+                        time_str = self.get_wib_time()
+                        print(f"[{time_str}] {Fore.GREEN}[SUCCESS] Login successful!{Style.RESET_ALL}")
+                        return data['token'], address
+                    else:
+                        self.log(f"Token not in response: {data}", "WARNING")
+                except ValueError:
+                    self.log(f"JSON Parse Error. Server returned: {response.text}", "ERROR")
             else:
-                self.log(f"Login failed [{response.status_code}]", "ERROR")
+                self.log(f"Login failed [{response.status_code}]: {response.text}", "ERROR")
                     
         except Exception as e:
-            self.log(f"Login error: {str(e)}", "ERROR")
+            self.log(f"Login error detail: {str(e)}", "ERROR")
         
         return None, None
 
     def do_claim(self, token, proxies):
-        headers = self.get_headers("points", auth_token=token)
+        headers = self.get_headers("v1", auth_token=token)
         try:
             self.log(f"Processing Daily Claim:", "INFO")
             
             self.random_delay()
             
             response = requests.post(
-                "https://points.shadenetwork.io/api/claim", 
+                "https://v1.shadenetwork.io/api/claim", 
                 headers=headers, 
                 json={}, 
                 proxies=proxies, 
@@ -396,260 +221,66 @@ class ShadeBot:
             )
             
             if response.status_code == 200:
-                data = response.json()
-                if data.get("success"):
-                    reward = data.get('reward', 0)
-                    streak = data.get('streak', 0)
-                    new_points = data.get('newPoints', 0)
-                    
-                    time_str = self.get_wib_time()
-                    print(f"[{time_str}] {Fore.GREEN}[SUCCESS] Claim Success! Reward: +{reward} Points | Streak: {streak} days{Style.RESET_ALL}")
-                    
-                    self.random_delay()
-                    
-                    time_str = self.get_wib_time()
-                    print(f"[{time_str}] {Fore.GREEN}[SUCCESS] Total Points: {new_points:,}{Style.RESET_ALL}")
-                else:
-                    self.log(f"Not claimed yet", "WARNING")
-            elif response.status_code == 400:
-                self.log("Already claimed", "WARNING")
-            elif response.status_code == 429:
-                self.log("Already claimed", "WARNING")
-            else:
-                self.log(f"Not claimed yet", "WARNING")
-                
-        except Exception as e:
-            self.log(f"Claim error", "ERROR")
-
-    def verify_twitter(self, token, proxies):
-        headers = self.get_headers("points", auth_token=token)
-        headers["referer"] = "https://points.shadenetwork.io/quests"
-        
-        twitter_quests = [
-            {"questId": "social_001", "title": "Follow Twitter"},
-            {"questId": "social_002", "title": "Like Tweet"},
-            {"questId": "social_003", "title": "Retweet"},
-        ]
-        
-        try:
-            self.log("Processing Twitter Verifications:", "INFO")
-            
-            for quest in twitter_quests:
-                self.random_delay()
-                
-                response = requests.post(
-                    "https://points.shadenetwork.io/api/quests/verify-twitter",
-                    headers=headers,
-                    json={"questId": quest["questId"]},
-                    proxies=proxies,
-                    timeout=30
-                )
-                
-                if response.status_code == 200:
+                try:
                     data = response.json()
-                    if data.get("verified"):
-                        verification_proof = data.get("proof", "")
+                    if data.get("success"):
+                        reward = data.get('reward', 0)
+                        streak = data.get('streak', 0)
+                        new_points = data.get('newPoints', 0)
+                        
                         time_str = self.get_wib_time()
-                        print(f"[{time_str}] {Fore.GREEN}[SUCCESS] Twitter Quest '{quest['title']}' Verified!{Style.RESET_ALL}")
-                        
-                        self.random_delay()
-                        
-                        complete_response = requests.post(
-                            "https://points.shadenetwork.io/api/quests/complete",
-                            headers=headers,
-                            json={
-                                "questId": quest["questId"],
-                                "verificationProof": verification_proof
-                            },
-                            proxies=proxies,
-                            timeout=30
-                        )
-                        
-                        if complete_response.status_code == 200:
-                            complete_data = complete_response.json()
-                            if complete_data.get("success"):
-                                points_awarded = complete_data.get("pointsAwarded", 0)
-                                new_points = complete_data.get("newPoints", 0)
-                                time_str = self.get_wib_time()
-                                print(f"[{time_str}] {Fore.GREEN}[SUCCESS] Quest Completed! Points: +{points_awarded} | Total: {new_points:,}{Style.RESET_ALL}")
-                elif response.status_code == 400:
-                    pass
-                else:
-                    pass
-                    
-        except Exception as e:
-            pass
-
-    def verify_discord(self, token, proxies):
-        headers = self.get_headers("points", auth_token=token)
-        headers["referer"] = "https://points.shadenetwork.io/quests"
-        
-        discord_quests = [
-            {"questId": "social_006", "title": "Join Discord"},
-            {"questId": "social_007", "title": "Send Message"},
-        ]
-        
-        try:
-            self.log("Processing Discord Verifications:", "INFO")
-            
-            for quest in discord_quests:
-                self.random_delay()
-                
-                response = requests.post(
-                    "https://points.shadenetwork.io/api/quests/verify-discord",
-                    headers=headers,
-                    json={"questId": quest["questId"]},
-                    proxies=proxies,
-                    timeout=30
-                )
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    if data.get("verified"):
-                        verification_proof = data.get("proof", "")
-                        time_str = self.get_wib_time()
-                        print(f"[{time_str}] {Fore.GREEN}[SUCCESS] Discord Quest '{quest['title']}' Verified!{Style.RESET_ALL}")
-                        
-                        self.random_delay()
-                        
-                        complete_response = requests.post(
-                            "https://points.shadenetwork.io/api/quests/complete",
-                            headers=headers,
-                            json={
-                                "questId": quest["questId"],
-                                "verificationProof": verification_proof
-                            },
-                            proxies=proxies,
-                            timeout=30
-                        )
-                        
-                        if complete_response.status_code == 200:
-                            complete_data = complete_response.json()
-                            if complete_data.get("success"):
-                                points_awarded = complete_data.get("pointsAwarded", 0)
-                                new_points = complete_data.get("newPoints", 0)
-                                time_str = self.get_wib_time()
-                                print(f"[{time_str}] {Fore.GREEN}[SUCCESS] Quest Completed! Points: +{points_awarded} | Total: {new_points:,}{Style.RESET_ALL}")
-                elif response.status_code == 400:
-                    pass
-                else:
-                    pass
-                    
-        except Exception as e:
-            pass
-
-    def do_faucet(self, address, proxies):
-        url = "https://wallet.shadenetwork.io/api/drip"
-        headers = self.get_headers("wallet")
-        
-        try:
-            self.log("Processing Faucet Claim:", "INFO")
-            
-            self.log("Solving captcha...", "INFO")
-            captcha_token = self.captcha_solver.solve(self.captcha_method)
-            
-            if not captcha_token:
-                self.log("Failed to solve captcha, skipping faucet", "ERROR")
-                return
-            
-            payload = {
-                "address": address,
-                "turnstileToken": captcha_token
-            }
-            
-            self.random_delay()
-            
-            response = requests.post(
-                url, 
-                headers=headers, 
-                json=payload, 
-                proxies=proxies, 
-                timeout=60
-            )
-            
-            if response.status_code == 200:
-                data = response.json()
-                if data.get("success"):
-                    amount = data.get("amount", "0")
-                    tx_hash = data.get("txHash", "")
-                    recipient = data.get("recipient", "")
-                    tx_type = data.get("type", "")
-                    commitment = data.get("commitment", "")
-                    status = data.get("status", "")
-                    
-                    time_str = self.get_wib_time()
-                    print(f"[{time_str}] {Fore.GREEN}[SUCCESS] Faucet Claimed! Amount: {amount} SHD{Style.RESET_ALL}")
-                    
-                    self.random_delay()
-                    
-                    time_str = self.get_wib_time()
-                    print(f"[{time_str}] {Fore.GREEN}[SUCCESS] TxHash: {tx_hash[:10]}...{tx_hash[-8:]}{Style.RESET_ALL}")
-                    
-                    time_str = self.get_wib_time()
-                    print(f"[{time_str}] {Fore.GREEN}[SUCCESS] Type: {tx_type} | Status: {status}{Style.RESET_ALL}")
-                else:
-                    self.log("Not claimed yet", "WARNING")
-            elif response.status_code == 429:
-                error_data = response.json() if response.text else {}
-                error_msg = error_data.get('error', '')
-                if error_msg:
-                    self.log(f"Faucet: {error_msg}", "WARNING")
-                else:
-                    self.log("Already claimed", "WARNING")
-            elif response.status_code == 404:
-                self.log("Already claimed", "WARNING")
+                        print(f"[{time_str}] {Fore.GREEN}[SUCCESS] Claim Success! Reward: +{reward} Points | Streak: {streak} days{Style.RESET_ALL}")
+                    else:
+                        self.log(f"Not claimed yet", "WARNING")
+                except ValueError:
+                    self.log(f"JSON Parse Error. Server returned: {response.text}", "ERROR")
             elif response.status_code == 400:
-                error_data = response.json() if response.text else {}
-                error_msg = error_data.get('error', 'Invalid captcha or request')
-                self.log(f"Faucet error: {error_msg}", "ERROR")
+                self.log(f"Already claimed", "WARNING")
+            elif response.status_code == 429:
+                self.log(f"Rate limited [{response.status_code}]", "WARNING")
             else:
-                self.log(f"Not claimed yet", "WARNING")
-        
-        except requests.exceptions.Timeout:
-            self.log("Faucet timeout", "WARNING")
+                self.log(f"Failed to claim [{response.status_code}]: {response.text}", "WARNING")
+                
         except Exception as e:
-            self.log(f"Faucet error: {str(e)}", "ERROR")
+            self.log(f"Claim error detail: {str(e)}", "ERROR")
 
-    def check_leaderboard(self, token, proxies):
-        headers = self.get_headers("points", auth_token=token)
-        headers["referer"] = "https://points.shadenetwork.io/leaderboard"
+    def check_user_info(self, address, token, proxies):
+        headers = self.get_headers("v1", auth_token=token)
         
         try:
-            self.log("Checking Leaderboard:", "INFO")
+            self.log("Checking User Info:", "INFO")
             
             self.random_delay()
             
             response = requests.get(
-                "https://points.shadenetwork.io/api/leaderboard?type=overall&page=1&limit=50",
+                f"https://v1.shadenetwork.io/api/auth/user?wallet={address}",
                 headers=headers,
                 proxies=proxies,
                 timeout=30
             )
             
             if response.status_code == 200:
-                data = response.json()
-                current_user = data.get("currentUser", {})
-                
-                if current_user:
-                    rank = current_user.get("rank", "N/A")
-                    nickname = current_user.get("nickname", "Unknown")
-                    points = current_user.get("points", 0)
-                    level = current_user.get("level", 0)
+                try:
+                    data = response.json()
+                    user = data.get("user", {})
                     
-                    time_str = self.get_wib_time()
-                    print(f"[{time_str}] {Fore.GREEN}[SUCCESS] Leaderboard Info:{Style.RESET_ALL}")
-                    
-                    self.random_delay()
-                    
-                    time_str = self.get_wib_time()
-                    print(f"[{time_str}] {Fore.GREEN}[SUCCESS] Nickname: {nickname} | Rank: #{rank} | Points: {points:,} | Level: {level}{Style.RESET_ALL}")
-                else:
-                    self.log("User data not found", "WARNING")
+                    if user:
+                        nickname = user.get("nickname", "Unknown")
+                        rank = user.get("rank", "N/A")
+                        points = user.get("points", 0)
+                        level = user.get("level", 0)
+                        
+                        time_str = self.get_wib_time()
+                        print(f"[{time_str}] {Fore.GREEN}[SUCCESS] Nickname: {nickname} | Rank: #{rank} | Points: {points:,} | Level: {level}{Style.RESET_ALL}")
+                    else:
+                        self.log("User data not found", "WARNING")
+                except ValueError:
+                    self.log(f"JSON Parse Error. Server returned: {response.text}", "ERROR")
             else:
-                self.log(f"Leaderboard check failed", "WARNING")
+                self.log(f"User info check failed [{response.status_code}]", "WARNING")
                 
         except Exception as e:
-            self.log(f"Leaderboard error", "ERROR")
+            self.log(f"User info error: {str(e)}", "ERROR")
 
     def run(self):
         self.print_banner()
@@ -671,7 +302,6 @@ class ShadeBot:
         else:
             self.log("Running without Proxy Mode", "INFO")
         
-        self.log(f"Captcha Solver: {self.captcha_method.upper()}", "INFO")
         self.log(f"Loaded {len(private_keys)} accounts successfully", "INFO")
         
         print(f"\n{Fore.CYAN}============================================================{Style.RESET_ALL}\n")
@@ -705,13 +335,7 @@ class ShadeBot:
                     
                     self.do_claim(token, current_proxy)
                     
-                    self.verify_twitter(token, current_proxy)
-                    
-                    self.verify_discord(token, current_proxy)
-
-                    self.do_faucet(address, current_proxy)
-                    
-                    self.check_leaderboard(token, current_proxy)
+                    self.check_user_info(address, token, current_proxy)
                 else:
                     self.log(f"Skipping account #{i+1} due to login failure", "WARNING")
 
